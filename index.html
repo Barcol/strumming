@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trener bicia</title>
+<style>
+  :root {
+    --bg: #14161b; --panel: #1d2028; --text: #e8e8ea; --muted: #6b7080;
+    --off: #3a3e4a; --down: #ff9f43; --up: #3ec7c2; --beat: #f5f5f5; --accent: #ff5e7a;
+    --good: #4cd97b; --late: #ffd23f; --bad: #ff5e7a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+    padding: 24px 16px 48px; user-select: none;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; color: var(--muted); letter-spacing: .05em; }
+  .panel { background: var(--panel); border-radius: 16px; padding: 16px 20px; width: 100%; max-width: 760px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; justify-content: center; }
+  .bpm { display: flex; align-items: center; gap: 10px; }
+  .bpm-value { font-size: 40px; font-weight: 700; min-width: 80px; text-align: center; font-variant-numeric: tabular-nums; }
+  .bpm-label { color: var(--muted); font-size: 13px; }
+  .kaczmarski { display: none }
+  input[type=range] { width: 220px; accent-color: var(--down); }
+  button, select {
+    background: var(--off); color: var(--text); border: 0; border-radius: 10px;
+    padding: 8px 14px; font-size: 15px; cursor: pointer; font-family: inherit;
+  }
+  button:hover, select:hover { filter: brightness(1.2); }
+  button:disabled { opacity: .4; cursor: default; filter: none; }
+  #play { background: var(--down); color: #1a1a1a; font-weight: 700; font-size: 18px; padding: 12px 28px; min-width: 130px; }
+  #play.on { background: var(--accent); color: #fff; }
+  #mic.on { background: var(--good); color: #1a1a1a; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; cursor: pointer; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: center; }
+  .small { padding: 4px 10px; font-size: 13px; }
+  .mono { font-variant-numeric: tabular-nums; color: var(--text); }
+  #micStatus { width: 100%; text-align: center; color: var(--muted); font-size: 13px; min-height: 1em; }
+
+  .arrows { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; width: 100%; max-width: 760px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .arrow {
+    width: 100%; aspect-ratio: 1 / 1.4; padding: 0; background: transparent; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .06s ease-out, background .06s;
+  }
+  .arrow svg { width: 70%; height: 70%; fill: var(--off); transition: fill .06s; }
+  .arrow.hit.down svg { fill: var(--down); }
+  .arrow.hit.up svg { fill: var(--up); }
+  .arrow.up svg { transform: rotate(180deg); }
+  .arrow.active { background: #2a2e3a; transform: scale(1.12); }
+  .arrow.active.hit { box-shadow: 0 0 0 3px currentColor inset; }
+  .arrow.active.hit.down { color: var(--down); }
+  .arrow.active.hit.up { color: var(--up); }
+  .arrow.active:not(.hit) { box-shadow: 0 0 0 2px var(--muted) inset; }
+  .count { font-size: 18px; font-weight: 600; color: var(--muted); }
+  .count.beat { color: var(--text); }
+  .cell.active .count { color: var(--accent); }
+
+  #scope { width: 100%; height: 200px; display: block; border-radius: 10px; }
+  .scope-panel { padding: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; font-size: 12px; color: var(--muted); padding-top: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+
+  .bottom { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: center; width: 100%; max-width: 760px; }
+  #wheel { width: 100%; max-width: 280px; flex: 0 1 280px; }
+  .stats-panel { flex: 1 1 340px; max-width: 460px; padding: 14px 16px; }
+  .stats-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  #stats { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #stats th { color: var(--muted); font-weight: 500; font-size: 12px; text-align: right; padding: 4px 6px; }
+  #stats td { text-align: right; padding: 5px 6px; border-top: 1px solid #2a2d36; }
+  #stats th:first-child, #stats td:first-child { text-align: left; }
+  #stats tr.pause td { color: var(--muted); }
+  #stats tr.active td { background: #2a2e3a; }
+  #stats tr.total td { border-top: 2px solid var(--off); font-weight: 700; }
+  .stats-note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  #countin { height: 28px; font-size: 20px; font-weight: 700; color: var(--accent); text-align: center; }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; max-width: 760px; line-height: 1.6; }
+  kbd { background: var(--off); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>TRENER BICIA<span class="kaczmarski"> ŻONY</span></h1>
+
+  <div class="panel controls">
+    <div class="bpm">
+      <button id="minus">−</button>
+      <div>
+        <div class="bpm-value" id="bpmValue">70</div>
+        <div class="bpm-label" style="text-align:center">BPM</div>
+      </div>
+      <button id="plus">+</button>
+    </div>
+    <input type="range" id="bpm" min="30" max="200" value="70">
+    <button id="play">▶ Start</button>
+  </div>
+
+  <div class="panel row">
+    <label>Bicie
+      <select id="preset"></select>
+    </label>
+    <label>Ósemki
+      <select id="tickMode">
+        <option value="hit">tick na granych</option>
+        <option value="all">tick na wszystkich</option>
+        <option value="none">cisza</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="countIn" checked> Cold start (1 takt)</label>
+  </div>
+
+  <div class="panel row">
+    <button id="mic">🎤 Włącz mikrofon</button>
+    <button id="calib">Kalibruj</button>
+    <label>Opóźnienie
+      <button class="small" id="latMinus">−</button>
+      <span class="mono" id="latValue">0 ms</span>
+      <button class="small" id="latPlus">+</button>
+    </label>
+    <label>Próg
+      <input type="range" id="thr" min="-60" max="-3" value="-30" style="width:140px">
+      <span class="mono" id="thrValue">-30 dB</span>
+    </label>
+    <div id="micStatus"></div>
+  </div>
+
+  <div id="countin"></div>
+  <div class="arrows" id="arrows"></div>
+
+  <div class="panel scope-panel">
+    <canvas id="scope"></canvas>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--good)"></span>trafione (±50 ms)</span>
+      <span><span class="dot" style="background:var(--late)"></span>trafione, ale nierówno (liczba = ms, + za późno)</span>
+      <span><span class="dot" style="background:var(--bad)"></span>uderzenie zbędne (nie pasuje do żadnego ruchu)</span>
+      <span><span class="dot" style="border:2px solid var(--bad)"></span>brakujące uderzenie</span>
+      <span>— przerywana linia = próg czułości</span>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <svg id="wheel" viewBox="0 0 300 300"></svg>
+    <div class="panel stats-panel">
+      <div class="stats-head">
+        <b>Statystyki</b>
+        <label>z ostatnich
+          <select id="statWin" class="small">
+            <option value="10">10 taktów</option>
+            <option value="20" selected>20 taktów</option>
+            <option value="50">50 taktów</option>
+            <option value="0">wszystkich</option>
+          </select>
+        </label>
+        <button class="small" id="resetStats">Wyzeruj</button>
+      </div>
+      <table id="stats">
+        <thead><tr><th>Ruch</th><th>Trafione</th><th>Średnio</th><th>Śr. |odch.|</th><th>Brak</th><th>Zbędne</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="stats-note">
+        Średnio: <b>+</b> = za późno, <b>−</b> = za wcześnie (tendencja). Śr. |odch.| = jak bardzo średnio rozjeżdżasz się z rytmem.<br>
+        Zbędne = uderzenia, których nie dało się przypisać do żadnego ruchu (np. w pauzę, gdy sąsiednie już zagrałeś).
+        Liczone z ostatnich N taktów, więc nieudany początek po chwili wypada ze statystyk. Zeruje się przy każdym Starcie.
+      </div>
+    </div>
+  </div>
+
+  <div class="hint">
+    Kliknij strzałkę, żeby ją włączyć/wyłączyć. Kolor = grasz, szary = ręka i tak się rusza, tylko omija struny.<br>
+    Mikrofon: graj w słuchawkach (inaczej mikrofon słyszy metronom). Najpierw ustaw próg tak, żeby szum był pod przerywaną linią,
+    a uderzenia wyraźnie nad nią, potem raz zrób <b>Kalibruj</b>.<br>
+    <kbd>Spacja</kbd> start/stop · <kbd>↑</kbd><kbd>↓</kbd> BPM ±1 · <kbd>Shift</kbd>+<kbd>↑</kbd><kbd>↓</kbd> ±5
+  </div>
+
+<script>
+const LABELS = ['1', 'i', '2', 'i', '3', 'i', '4', 'i'];
+const PRESETS = {
+  'Harcerskie (D DG GDG)': [1,0,1,1,0,1,1,1],
+  'Same dół na raz':        [1,0,1,0,1,0,1,0],
+  'Dół-góra (wszystkie)':   [1,1,1,1,1,1,1,1],
+  'Dół, dół-góra ×3 (D DG DG DG)': [1,0,1,1,1,1,1,1],
+  'Reggae (tylko „i”)':     [0,1,0,1,0,1,0,1],
+  'Rock (D D DG D DG)':     [1,0,1,0,1,1,1,1],
+  'Własne':                 null,
+};
+const CALIB_PATTERN = [1,0,1,0,1,0,1,0];
+const CALIB_BARS = 3;
+const GOOD_TOL = 0.05; // s
+
+let pattern = [...PRESETS['Harcerskie (D DG GDG)']];
+let bpm = 70;
+let latency = 0;      // s, mic+speaker round trip, set by calibration
+let thrDb = -30;
+let calibrated = false;
+try {
+  const saved = JSON.parse(localStorage.getItem('strum') || 'null');
+  if (saved) {
+    if (Array.isArray(saved.pattern)) pattern = saved.pattern;
+    if (saved.bpm) bpm = saved.bpm;
+    if (typeof saved.latency === 'number') { latency = saved.latency; calibrated = !!saved.calibrated; }
+    if (typeof saved.thrDb === 'number') thrDb = saved.thrDb;
+  }
+} catch (e) {}
+const save = () => {
+  try { localStorage.setItem('strum', JSON.stringify({ pattern, bpm, latency, thrDb, calibrated })); } catch (e) {}
+};
+
+let calib = null; // { offsets: [], start, end } while calibrating
+const activePattern = () => calib ? CALIB_PATTERN : pattern;
+
+// ---------- UI: arrows ----------
+const arrowsEl = document.getElementById('arrows');
+const ARROW_SVG = '<svg viewBox="0 0 100 140"><path d="M38 0h24v90h28L50 140 10 90h28z"/></svg>';
+const arrowBtns = [], cells = [];
+LABELS.forEach((lab, i) => {
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  const b = document.createElement('button');
+  b.className = 'arrow ' + (i % 2 === 0 ? 'down' : 'up');
+  b.innerHTML = ARROW_SVG;
+  b.title = (i % 2 === 0 ? 'Dół' : 'Góra') + ' (kliknij, żeby przełączyć)';
+  b.addEventListener('click', () => {
+    if (calib) return;
+    pattern[i] = pattern[i] ? 0 : 1;
+    presetEl.value = matchPreset();
+    save(); render();
+  });
+  const c = document.createElement('div');
+  c.className = 'count' + (i % 2 === 0 ? ' beat' : '');
+  c.textContent = lab;
+  cell.append(b, c);
+  arrowsEl.append(cell);
+  arrowBtns.push(b); cells.push(cell);
+});
+
+// ---------- UI: wheel ----------
+const wheel = document.getElementById('wheel');
+const NS = 'http://www.w3.org/2000/svg';
+const CX = 150, CY = 150;
+function sector(r0, r1, a0, a1) {
+  const p = (r, a) => [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+  return `M${x0} ${y0}A${r1} ${r1} 0 ${large} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${large} 0 ${x3} ${y3}Z`;
+}
+function svgText(x, y, size, txt) {
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y);
+  t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', size); t.setAttribute('font-weight', '700');
+  t.setAttribute('pointer-events', 'none');
+  t.textContent = txt;
+  return t;
+}
+const START = -Math.PI / 2, GAP = 0.03;
+const innerSegs = [], outerSegs = [];
+for (let q = 0; q < 4; q++) {
+  const a0 = START + q * Math.PI / 2 + GAP, a1 = START + (q + 1) * Math.PI / 2 - GAP;
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', sector(28, 92, a0, a1));
+  wheel.append(path); innerSegs.push(path);
+  const mid = (a0 + a1) / 2;
+  const t = svgText(CX + 60 * Math.cos(mid), CY + 60 * Math.sin(mid) + 9, 26, q + 1);
+  wheel.append(t); path.label = t;
+}
+for (let e = 0; e < 8; e++) {
+  const a0 = START + e * Math.PI / 4 + GAP, a1 = START + (e + 1) * Math.PI / 4 - GAP;
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', sector(98, 145, a0, a1));
+  path.style.cursor = 'pointer';
+  path.addEventListener('click', () => arrowBtns[e].click());
+  wheel.append(path); outerSegs.push(path);
+  const mid = (a0 + a1) / 2;
+  const t = svgText(CX + 122 * Math.cos(mid), CY + 122 * Math.sin(mid) + 7, 20, e % 2 === 0 ? '↓' : '↑');
+  wheel.append(t); path.label = t;
+}
+
+// ---------- render ----------
+let current = -1; // current eighth (0..7), -1 = idle
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = {};
+['--off','--down','--up','--beat','--accent','--good','--late','--bad','--muted'].forEach(k => C[k.slice(2)] = css(k));
+
+function render() {
+  const pat = activePattern();
+  arrowBtns.forEach((b, i) => {
+    b.classList.toggle('hit', !!pat[i]);
+    b.classList.toggle('active', i === current);
+    cells[i].classList.toggle('active', i === current);
+    statRows[i].classList.toggle('active', i === current);
+  });
+  statsDirty = true;
+  const curBeat = current >= 0 ? Math.floor(current / 2) : -1;
+  innerSegs.forEach((s, q) => {
+    const on = q === curBeat;
+    s.setAttribute('fill', on ? (q === 0 ? C.accent : C.beat) : C.off);
+    s.setAttribute('opacity', on ? 1 : 0.6);
+    s.label.setAttribute('fill', on ? '#14161b' : '#8a8f9c');
+  });
+  outerSegs.forEach((s, e) => {
+    const col = pat[e] ? (e % 2 === 0 ? C.down : C.up) : C.off;
+    const on = e === current;
+    s.setAttribute('fill', col);
+    s.setAttribute('opacity', on ? 1 : (pat[e] ? 0.35 : 0.5));
+    s.setAttribute('stroke', on ? '#fff' : 'none');
+    s.setAttribute('stroke-width', on ? 3 : 0);
+    s.label.setAttribute('fill', on ? '#14161b' : (pat[e] ? col : '#555a66'));
+  });
+}
+
+// ---------- controls ----------
+const bpmEl = document.getElementById('bpm'), bpmValEl = document.getElementById('bpmValue');
+const presetEl = document.getElementById('preset'), tickEl = document.getElementById('tickMode');
+const countInEl = document.getElementById('countIn'), countInText = document.getElementById('countin');
+const playBtn = document.getElementById('play');
+const micBtn = document.getElementById('mic'), calibBtn = document.getElementById('calib');
+const micStatus = document.getElementById('micStatus');
+const latValue = document.getElementById('latValue');
+const thrEl = document.getElementById('thr'), thrValue = document.getElementById('thrValue');
+
+Object.keys(PRESETS).forEach(name => {
+  const o = document.createElement('option'); o.value = o.textContent = name; presetEl.append(o);
+});
+function matchPreset() {
+  for (const [n, p] of Object.entries(PRESETS)) if (p && p.every((v, i) => v === pattern[i])) return n;
+  return 'Własne';
+}
+presetEl.value = matchPreset();
+presetEl.addEventListener('change', () => {
+  const p = PRESETS[presetEl.value];
+  if (p && !calib) { pattern = [...p]; save(); render(); }
+});
+
+function setBpm(v) {
+  if (calib) { bpmEl.value = bpm; return; }
+  bpm = Math.max(30, Math.min(200, Math.round(v)));
+  bpmEl.value = bpm; bpmValEl.textContent = bpm; save();
+}
+setBpm(bpm);
+bpmEl.addEventListener('input', () => setBpm(+bpmEl.value));
+document.getElementById('minus').addEventListener('click', () => setBpm(bpm - 1));
+document.getElementById('plus').addEventListener('click', () => setBpm(bpm + 1));
+
+function showLatency() {
+  latValue.textContent = Math.round(latency * 1000) + ' ms' + (calibrated ? '' : ' (nieskalibrowane)');
+}
+showLatency();
+document.getElementById('latMinus').addEventListener('click', () => { latency = Math.max(0, latency - 0.005); save(); showLatency(); });
+document.getElementById('latPlus').addEventListener('click', () => { latency += 0.005; save(); showLatency(); });
+
+function setThr(v) { thrDb = +v; thrEl.value = thrDb; thrValue.textContent = thrDb + ' dB'; save(); }
+setThr(thrDb);
+thrEl.addEventListener('input', () => setThr(thrEl.value));
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' && e.target.type === 'range' && e.code !== 'Space') return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  else if (e.code === 'ArrowUp') { e.preventDefault(); setBpm(bpm + (e.shiftKey ? 5 : 1)); }
+  else if (e.code === 'ArrowDown') { e.preventDefault(); setBpm(bpm - (e.shiftKey ? 5 : 1)); }
+});
+playBtn.addEventListener('click', toggle);
+// keep space from re-clicking a focused button
+document.querySelectorAll('button').forEach(b => b.addEventListener('keydown', e => { if (e.code === 'Space') e.preventDefault(); }));
+
+// ---------- audio (lookahead scheduler) ----------
+let ctx = null, running = false, nextTime = 0, step = 0, countInLeft = 0, timerId = null, barNo = 0;
+const queue = [];    // steps waiting to be shown in the UI
+let history = [];    // every scheduled step: { time, step, dur, expected, isCountIn, match, missed, final }
+
+function ensureCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  ctx.resume();
+}
+
+function click(time, freq, vol, dur) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.exponentialRampToValueAtTime(vol, time + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  o.connect(g).connect(ctx.destination);
+  o.start(time); o.stop(time + dur + 0.01);
+}
+
+function playStep(s, time, isCountIn) {
+  const beat = s % 2 === 0;
+  const pat = activePattern();
+  if (beat) click(time, s === 0 ? 1600 : 1000, s === 0 ? 0.7 : 0.5, 0.05);
+  if (isCountIn || calib) return;
+  const mode = tickEl.value;
+  if (mode === 'all' || (mode === 'hit' && pat[s])) {
+    click(time + (beat ? 0.004 : 0), pat[s] ? 1300 : 1100, beat ? 0.03 : 0.06, 0.02);
+  }
+}
+
+function scheduler() {
+  while (nextTime < ctx.currentTime + 0.12) {
+    const isCountIn = countInLeft > 0;
+    const dur = 60 / bpm / 2;
+    if (calib && !isCountIn && calib.start == null) {
+      calib.start = nextTime;
+      calib.end = nextTime + CALIB_BARS * 8 * dur + 0.35;
+    }
+    if (!isCountIn && step === 0) barNo++;
+    playStep(step, nextTime, isCountIn);
+    queue.push({ step, time: nextTime, isCountIn });
+    history.push({ time: nextTime, step, dur, expected: !!activePattern()[step], isCountIn, bar: barNo, match: null, missed: false, final: false });
+    nextTime += dur;
+    step = (step + 1) % 8;
+    if (isCountIn) countInLeft--;
+  }
+}
+
+function toggle() { running ? stop() : start(); }
+function start() {
+  ensureCtx();
+  running = true; step = 0; queue.length = 0; history = []; onsets = [];
+  entries = []; statsDirty = true; barNo = 0;
+  countInLeft = (countInEl.checked || calib) ? 8 : 0;
+  nextTime = ctx.currentTime + 0.1;
+  timerId = setInterval(scheduler, 25);
+  scheduler();
+  playBtn.textContent = '■ Stop'; playBtn.classList.add('on');
+}
+function stop() {
+  running = false; clearInterval(timerId);
+  // steps that were still open when stopping don't count as misses
+  for (const h of history) h.final = true;
+  current = -1; queue.length = 0; countInText.textContent = '';
+  playBtn.textContent = '▶ Start'; playBtn.classList.remove('on');
+  if (calib) { calib = null; micStatus.textContent = 'Kalibracja przerwana.'; calibBtn.disabled = false; }
+  render();
+}
+
+// ---------- microphone ----------
+const WORKLET = `
+class PeakMeter extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = []; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) {
+      let m = 0;
+      for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > m) m = a; }
+      this.buf.push(currentTime, m);
+      if (this.buf.length >= 8) { this.port.postMessage(this.buf); this.buf = []; }
+    }
+    return true;
+  }
+}
+registerProcessor('peak-meter', PeakMeter);`;
+
+let micOn = false, micStream = null, micSrc = null, micNode = null, workletLoaded = false;
+let env = [];        // { t, p } raw (uncorrected) peak per audio block
+let onsets = [];     // { t (corrected), kind, dt }
+let follow = 0, lastOnset = -1;
+
+async function enableMic() {
+  ensureCtx();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    micStatus.textContent = 'Przeglądarka nie daje dostępu do mikrofonu z pliku. Uruchom w tym katalogu: python3 -m http.server i wejdź na localhost:8000/strumming.html';
+    return;
+  }
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    if (!workletLoaded) {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(url);
+      workletLoaded = true;
+    }
+    micSrc = ctx.createMediaStreamSource(micStream);
+    micNode = new AudioWorkletNode(ctx, 'peak-meter');
+    micNode.port.onmessage = e => {
+      const a = e.data;
+      for (let i = 0; i < a.length; i += 2) onBlock(a[i], a[i + 1]);
+    };
+    const mute = ctx.createGain(); mute.gain.value = 0;
+    micSrc.connect(micNode).connect(mute).connect(ctx.destination);
+    micOn = true;
+    micBtn.textContent = '🎤 Mikrofon włączony'; micBtn.classList.add('on');
+    micStatus.textContent = calibrated ? '' : 'Ustaw próg, potem kliknij Kalibruj.';
+  } catch (err) {
+    micStatus.textContent = 'Nie udało się włączyć mikrofonu: ' + err.message +
+      '. Jeśli to Safari / plik z dysku, spróbuj: python3 -m http.server i localhost:8000/strumming.html';
+  }
+}
+function disableMic() {
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  if (micSrc) micSrc.disconnect();
+  if (micNode) micNode.disconnect();
+  micOn = false; micStream = micSrc = micNode = null;
+  micBtn.textContent = '🎤 Włącz mikrofon'; micBtn.classList.remove('on');
+}
+micBtn.addEventListener('click', () => micOn ? disableMic() : enableMic());
+
+function onBlock(t, p) {
+  env.push({ t, p });
+  const prev = follow;
+  follow = Math.max(p, follow * 0.97);
+  const thr = Math.pow(10, thrDb / 20);
+  const refractory = Math.min(0.08, (60 / bpm / 2) * 0.45);
+  if (p > thr && p > prev * 1.8 && t - lastOnset > refractory) {
+    lastOnset = t;
+    onOnset(t);
+  }
+}
+
+function nearestStep(t, filter) {
+  let best = null, bd = Infinity;
+  for (const h of history) {
+    if (!filter(h)) continue;
+    const d = Math.abs(t - h.time);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
+function onOnset(tRaw) {
+  const tc = tRaw - latency;
+  if (calib) {
+    if (calib.start != null && tRaw > calib.start - 0.2) {
+      const h = nearestStep(tRaw, h => !h.isCountIn && h.step % 2 === 0);
+      if (h) {
+        const off = tRaw - h.time;
+        if (Math.abs(off) < h.dur * 2 * 0.45) calib.offsets.push(off);
+      }
+    }
+    onsets.push({ t: tc, kind: 'cal' });
+    return;
+  }
+  // 1) Close to an expected step (within half an eighth)? Normal case.
+  let close = null, bd = Infinity;
+  for (const h of history) {
+    if (h.isCountIn || !h.expected) continue;
+    const d = Math.abs(tc - h.time);
+    if (d < h.dur * 0.5 && d < bd) { bd = d; close = h; }
+  }
+  if (close) {
+    if (!close.match) { assign(close, tc, false); return; }
+    if (close.match.far) {
+      // that step was "borrowed" by an earlier, far-off hit; this one fits better,
+      // so the earlier hit becomes the extra one
+      const old = close.match.onset;
+      old.kind = 'bad'; old.dt = undefined;
+      countExtra(old.t);
+      assign(close, tc, false);
+      return;
+    }
+    addBad(tc); // double hit on the same step
+    return;
+  }
+  // 2) Landed in a pause / between steps: give it to the earliest still-unplayed
+  //    expected step within one eighth (so it counts as late/early instead of wrong).
+  let cand = null;
+  for (const h of history) {
+    if (h.isCountIn || !h.expected || h.match || h.final) continue;
+    if (Math.abs(tc - h.time) <= h.dur * 1.05 && (!cand || h.time < cand.time)) cand = h;
+  }
+  if (cand) { assign(cand, tc, true); return; }
+  // 3) Nothing to give it to.
+  const n = nearestStep(tc, h => !h.isCountIn);
+  if (!n || Math.abs(tc - n.time) > n.dur * 0.6) { onsets.push({ t: tc, kind: 'free' }); return; }
+  addBad(tc);
+}
+
+function assign(h, tc, far) {
+  const dt = tc - h.time;
+  const o = { t: tc, dt, kind: Math.abs(dt) <= GOOD_TOL ? 'good' : 'late' };
+  onsets.push(o);
+  h.match = { onset: o, far };
+}
+function addBad(tc) {
+  onsets.push({ t: tc, kind: 'bad' });
+  countExtra(tc);
+}
+function countExtra(t) {
+  const n = nearestStep(t, h => !h.isCountIn);
+  if (n) { entries.push({ bar: n.bar, step: n.step, kind: 'extra' }); statsDirty = true; }
+}
+
+// ---------- per-step statistics ----------
+// entries: { bar, step, kind: 'hit' | 'miss' | 'extra', dt }; stats use only the last N bars
+let entries = [], statsDirty = true;
+const statWinEl = document.getElementById('statWin');
+try { const w = localStorage.getItem('strumStatWin'); if (w != null) statWinEl.value = w; } catch (e) {}
+statWinEl.addEventListener('change', () => {
+  try { localStorage.setItem('strumStatWin', statWinEl.value); } catch (e) {}
+  statsDirty = true;
+});
+function computeStats() {
+  const stats = Array.from({ length: 8 }, () => ({ exp: 0, n: 0, sum: 0, abs: 0, miss: 0, extra: 0 }));
+  const win = +statWinEl.value;
+  let lastBar = 0;
+  for (const e of entries) if (e.bar > lastBar) lastBar = e.bar;
+  for (const e of entries) {
+    if (win && e.bar <= lastBar - win) continue;
+    const s = stats[e.step];
+    if (e.kind === 'hit') { s.exp++; s.n++; s.sum += e.dt; s.abs += Math.abs(e.dt); }
+    else if (e.kind === 'miss') { s.exp++; s.miss++; }
+    else s.extra++;
+  }
+  // don't grow forever
+  if (entries.length > 5000) entries = entries.filter(e => e.bar > lastBar - 60);
+  return stats;
+}
+const statsBody = document.querySelector('#stats tbody');
+const statRows = [];
+for (let i = 0; i < 9; i++) { const tr = document.createElement('tr'); statsBody.append(tr); statRows.push(tr); }
+statRows[8].className = 'total';
+document.getElementById('resetStats').addEventListener('click', () => { entries = []; statsDirty = true; });
+
+function msCell(v, signed) {
+  if (v == null) return '<td>—</td>';
+  const ms = Math.round(v * 1000), a = Math.abs(ms);
+  const col = a <= 25 ? C.good : a <= 60 ? C.late : C.bad;
+  return `<td style="color:${col}">${signed && ms > 0 ? '+' : ''}${ms} ms</td>`;
+}
+function renderStats() {
+  const pat = activePattern();
+  const stats = computeStats();
+  let T = { exp: 0, n: 0, sum: 0, abs: 0, miss: 0, extra: 0 };
+  stats.forEach((s, i) => {
+    for (const k in T) T[k] += s[k];
+    const arrow = i % 2 === 0 ? '↓' : '↑';
+    const tr = statRows[i];
+    tr.classList.toggle('pause', !pat[i] && s.exp === 0);
+    const extra = s.extra ? `<td style="color:${C.bad}">${s.extra}</td>` : '<td>0</td>';
+    if (s.exp === 0) {
+      tr.innerHTML = `<td>${LABELS[i]} ${arrow}</td><td>${pat[i] ? '—' : 'pauza'}</td><td>—</td><td>—</td><td>—</td>${extra}`;
+    } else {
+      tr.innerHTML = `<td>${LABELS[i]} ${arrow}</td><td>${s.n}/${s.exp}</td>` +
+        msCell(s.n ? s.sum / s.n : null, true) + msCell(s.n ? s.abs / s.n : null, false) +
+        `<td${s.miss ? ` style="color:${C.bad}"` : ''}>${s.miss}</td>` + extra;
+    }
+  });
+  statRows[8].innerHTML = `<td>Razem</td><td>${T.n}/${T.exp}</td>` +
+    msCell(T.n ? T.sum / T.n : null, true) + msCell(T.n ? T.abs / T.n : null, false) +
+    `<td>${T.miss}</td><td>${T.extra}</td>`;
+  statsDirty = false;
+}
+
+// ---------- calibration ----------
+calibBtn.addEventListener('click', async () => {
+  if (!micOn) await enableMic();
+  if (!micOn) return;
+  if (running) stop();
+  calib = { offsets: [], start: null, end: null };
+  calibBtn.disabled = true;
+  micStatus.textContent = 'Kalibracja: po odliczaniu bij w dół na każde 1, 2, 3, 4 przez ' + CALIB_BARS + ' takty.';
+  render();
+  start();
+});
+
+function finishCalib() {
+  const offs = calib.offsets.slice().sort((a, b) => a - b);
+  calib = null;
+  stop();
+  calibBtn.disabled = false;
+  if (offs.length < 4) {
+    micStatus.textContent = 'Za mało wykrytych uderzeń (' + offs.length + '). Obniż próg i spróbuj jeszcze raz.';
+    return;
+  }
+  const median = offs[Math.floor(offs.length / 2)];
+  const spread = Math.round((offs[offs.length - 1] - offs[0]) * 1000);
+  latency = Math.max(0, median);
+  calibrated = true;
+  save(); showLatency();
+  micStatus.textContent = 'Skalibrowano: ' + Math.round(latency * 1000) + ' ms (z ' + offs.length +
+    ' uderzeń, rozrzut ' + spread + ' ms).' + (spread > 120 ? ' Duży rozrzut, warto powtórzyć.' : '');
+}
+
+// ---------- oscilloscope ----------
+const scope = document.getElementById('scope');
+const g = scope.getContext('2d');
+let SW = 0, SH = 0;
+function sizeScope() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = scope.getBoundingClientRect();
+  SW = r.width; SH = r.height;
+  scope.width = Math.round(SW * dpr); scope.height = Math.round(SH * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeScope);
+sizeScope();
+
+const dbY = (db, top, bot) => bot - Math.max(0, Math.min(1, (db + 60) / 60)) * (bot - top);
+
+function gridSteps(tL, tR) {
+  const out = history.filter(h => h.time >= tL && h.time <= tR);
+  if (running && history.length) {
+    const last = history[history.length - 1];
+    const pat = activePattern();
+    let t = last.time + last.dur, s = (last.step + 1) % 8, k = 0;
+    while (t <= tR) {
+      out.push({ time: t, step: s, expected: !!pat[s], isCountIn: k < countInLeft, future: true });
+      t += 60 / bpm / 2; s = (s + 1) % 8; k++;
+    }
+  }
+  return out;
+}
+
+function drawScope(now) {
+  const W = SW, H = SH;
+  g.fillStyle = '#101217'; g.fillRect(0, 0, W, H);
+  const beatDur = 60 / bpm;
+  const windowSec = 8 * beatDur;            // 2 bars
+  const pxs = W / windowSec;
+  const playX = W * 0.75;
+  const X = t => playX + (t - now) * pxs;
+  const tL = now - playX / pxs, tR = now + (W - playX) / pxs;
+  const labelY = 16, markY = 38, top = 52, bot = H - 6;
+
+  // grid
+  g.textAlign = 'center'; g.font = '600 12px system-ui, sans-serif';
+  for (const s of gridSteps(tL - 0.5, tR + 0.5)) {
+    const x = X(s.time), beat = s.step % 2 === 0;
+    if (s.isCountIn) {
+      if (beat) { g.strokeStyle = '#2a2d36'; g.lineWidth = 1; g.setLineDash([]); line(x, top, x, bot); }
+      continue;
+    }
+    const col = s.expected ? (beat ? C.down : C.up) : C.off;
+    g.strokeStyle = col; g.globalAlpha = s.future ? 0.5 : 0.9;
+    g.lineWidth = beat ? 2 : 1;
+    g.setLineDash(s.expected ? [] : [4, 4]);
+    line(x, top, x, bot);
+    g.setLineDash([]);
+    g.fillStyle = s.expected ? col : '#555a66';
+    g.fillText(LABELS[s.step] + (s.expected ? (beat ? '↓' : '↑') : ''), x, labelY);
+    g.globalAlpha = 1;
+    if (s.missed) {
+      g.strokeStyle = C.bad; g.lineWidth = 2.5;
+      g.beginPath(); g.arc(x, markY, 7, 0, Math.PI * 2); g.stroke();
+    }
+  }
+
+  // threshold
+  const ty = dbY(thrDb, top, bot);
+  g.strokeStyle = C.muted; g.lineWidth = 1; g.setLineDash([6, 4]);
+  line(0, ty, W, ty); g.setLineDash([]);
+
+  // envelope (shifted by latency so it lines up with the grid)
+  if (env.length) {
+    g.beginPath(); g.moveTo(X(env[0].t - latency), bot);
+    for (const e of env) {
+      const x = X(e.t - latency);
+      if (x < -2) continue;
+      g.lineTo(x, dbY(20 * Math.log10(Math.max(e.p, 1e-4)), top, bot));
+    }
+    g.lineTo(X(env[env.length - 1].t - latency), bot);
+    g.closePath();
+    g.fillStyle = 'rgba(232,232,234,0.18)'; g.fill();
+    g.strokeStyle = 'rgba(232,232,234,0.7)'; g.lineWidth = 1; g.stroke();
+  }
+
+  // onsets
+  g.font = '600 11px system-ui, sans-serif';
+  for (const o of onsets) {
+    const x = X(o.t);
+    if (x < -10 || x > W + 10) continue;
+    const col = { good: C.good, late: C.late, bad: C.bad, cal: C.beat, free: C.muted }[o.kind];
+    g.fillStyle = col;
+    g.beginPath(); g.arc(x, markY, 6, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = col; g.globalAlpha = 0.5; g.lineWidth = 1;
+    line(x, markY + 6, x, bot); g.globalAlpha = 1;
+    if (o.kind === 'late') {
+      const ms = Math.round(o.dt * 1000);
+      g.fillText((ms > 0 ? '+' : '') + ms, x, markY + 20);
+    }
+  }
+
+  // playhead
+  g.strokeStyle = C.accent; g.lineWidth = 2;
+  line(playX, 0, playX, H);
+
+  if (!micOn) {
+    g.fillStyle = C.muted; g.font = '14px system-ui, sans-serif'; g.textAlign = 'center';
+    g.fillText('Włącz mikrofon, żeby widzieć swoje uderzenia', W / 2, (top + bot) / 2);
+  }
+}
+function line(x0, y0, x1, y1) { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); }
+
+// ---------- main loop ----------
+function loop() {
+  if (ctx) {
+    const now = ctx.currentTime;
+    if (running) {
+      while (queue.length && queue[0].time <= now) {
+        const ev = queue.shift();
+        if (ev.isCountIn) {
+          current = -1;
+          if (ev.step % 2 === 0) countInText.textContent = 'Odliczanie: ' + (ev.step / 2 + 1);
+        } else {
+          current = ev.step;
+          if (calib && calib.start != null) {
+            const bar = Math.min(CALIB_BARS, Math.floor((ev.time - calib.start) / (8 * 60 / bpm / 2)) + 1);
+            countInText.textContent = 'Kalibracja: same ↓ na 1 2 3 4 (takt ' + bar + '/' + CALIB_BARS + ')';
+          } else countInText.textContent = '';
+        }
+        render();
+      }
+    }
+    // finalize steps once no later hit can still be assigned to them
+    for (const h of history) {
+      if (h.final || h.isCountIn) continue;
+      if (now <= h.time + latency + h.dur * 1.1 + 0.05) continue;
+      h.final = true;
+      if (!micOn || calib || !h.expected) continue;
+      if (h.match) entries.push({ bar: h.bar, step: h.step, kind: 'hit', dt: h.match.onset.dt });
+      else { h.missed = true; entries.push({ bar: h.bar, step: h.step, kind: 'miss' }); }
+      statsDirty = true;
+    }
+    if (running) {
+      if (calib && calib.end != null && now > calib.end) finishCalib();
+    }
+    // prune old data
+    const keep = now - 8 * 60 / bpm - 1;
+    if (env.length && env[0].t < keep) env = env.filter(e => e.t >= keep);
+    if (onsets.length && onsets[0].t < keep) onsets = onsets.filter(o => o.t >= keep);
+    if (history.length && history[0].time < keep - 1) history = history.filter(h => h.time >= keep - 1);
+    if (micOn || running) drawScope(now);
+    if (statsDirty) renderStats();
+  }
+  requestAnimationFrame(loop);
+}
+
+render();
+renderStats();
+drawScope(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
